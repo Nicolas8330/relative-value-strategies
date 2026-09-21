@@ -307,3 +307,18 @@ def factor_exposure(y2, y5, y10, body_notional=1_000_000.0):
         rows[name] = {factor: float(vector @ loadings[factor])
                       for factor in ('level', 'slope', 'curvature')}
     return pd.DataFrame(rows).T
+
+
+def tradeable_pnl(y2, y5, y10, body_notional=1_000_000.0, lookback=500):
+    """P&L of the factor-neutral fly as a position, not as a residual.
+
+    A signal built on the fair-value residual is not by itself tradeable: the
+    residual is the fly minus its fitted exposure to level, slope and vol, so
+    capturing it means holding the hedges too. Reporting a Sharpe on the
+    residual therefore flatters the strategy, because it charges nothing for
+    the hedge and assumes it is free and exact.
+
+    This is the honest version: the P&L of the PCA-neutral fly itself, weighted
+    on a trailing window, which is a position that can actually be put on.
+    """
+    return pnl_pca_neutral(y2, y5, y10, body_notional, lookback)

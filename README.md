@@ -34,9 +34,12 @@ window:
 | 2015-2026 | 2929 | 0.084 | unit root | −9.5 bp |
 | 2020-2026 | 1679 | 0.249 | unit root | −19.2 bp |
 
-The fly reverts to a level that itself moves. Over 36 years that looks like
-mean reversion; over any ten-year window it looks like a random walk, and the
-mean slides by 22 basis points. A z-score against a trailing mean keeps
+The fly reverts to a level that itself moves. Over 36 years it tests as
+stationary; over any ten-year window the test fails to reject a unit root, and
+the mean slides by 22 basis points. A non-rejection is not proof of a random
+walk — ADF has little power on a persistent series over a short window — but a
+baseline that only holds on the full history is not a baseline you can trade
+against in 2026. A z-score against a trailing mean keeps
 insisting the fly is cheap while the level it reverts to walks away underneath
 it.
 
@@ -61,7 +64,11 @@ must fail a stationarity test and the residual must pass it.
 | Raw fly | −2.30 | 0.173 | unit root | does not revert |
 | Model residual | **−3.45** | **0.009** | **stationary** | **35 days** |
 
-Regression with Newey-West standard errors, R² = 0.462:
+Regression with Newey-West standard errors, R² = 0.462. This one is fitted on
+the **whole sample**: it is a description of what drives the fly, not the model
+that produced the residual above, which is refitted every day on a trailing
+window. The two are different objects and mixing them up is the easiest way to
+report an out-of-sample result that quietly is not one.
 
 ```
               coefficient  hac_se  t_stat
@@ -157,6 +164,14 @@ This is a **regime bet**, and it is described as one: the signal earns 1.26
 with the curve inverted and 0.29 when it is not. Anyone showing you only the
 blended number is showing you an average of two different strategies.
 
+One caveat that belongs next to those numbers rather than in a footnote: they
+are computed on the **model residual**, which is the fly minus its fitted
+exposure to level, slope and volatility. Capturing that residual means holding
+those hedges, so the figures above are an upper bound that charges nothing for
+hedging and assumes the hedge is exact. `butterfly.tradeable_pnl` gives the
+P&L of the factor-neutral fly itself, which is the position you can actually
+put on.
+
 ![Where the signal earns](figures/regimes.png)
 
 ## Layer 4: the call today
@@ -199,7 +214,12 @@ it mean reversion, which is why `deseasonalise` exists.
 
 Continuous front-month futures contain roll gaps, so the crack series is right
 for measuring the level, the seasonality and the exposure, and wrong for
-claiming a tradeable P&L to the cent. Yields are constant-maturity par yields,
+claiming a tradeable P&L to the cent. Worse for the headline finding: crude,
+gasoline and heating oil roll on different days, so part of the instability in
+the crack's hedge ratio is a calendar artefact rather than a market fact. The
+conclusion that the ratio is too unstable to hedge with therefore holds for
+these continuous series, and would need dated contracts to be asserted about
+the physical spread. Yields are constant-maturity par yields,
 not deliverable futures, so the butterfly P&L is an approximation that ignores
 the basis, financing and the cheapest-to-deliver option. DV01 uses a par-bond
 approximation.

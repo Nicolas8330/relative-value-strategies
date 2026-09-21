@@ -39,23 +39,56 @@ def rolling_ols(y, X, window=500, expanding=False, min_periods=250):
     Returns a frame of coefficients indexed like `y`, with a constant in the
     first column. Row t holds the fit estimated on observations strictly
     before t, so it can be used to price t without peeking.
+
+    Computed from running sums rather than by refitting in a loop. A window of
+    w observations needs X'X and X'y over that window, and both are differences
+    of cumulative sums, so the whole path costs O(n k^2) instead of O(n w k^2).
+    With four regressors and four thousand days that is the difference between
+    a few milliseconds and half a minute, which is what makes it usable as a
+    slider rather than a batch job.
     """
     frame = pd.concat([y.rename('y'), X], axis=1).dropna()
     names = ['const'] + list(X.columns)
 
-    out = pd.DataFrame(index=frame.index, columns=names, dtype=float)
     values = frame.values
+    n = len(frame)
+    out = pd.DataFrame(index=frame.index, columns=names, dtype=float)
     start = min_periods if expanding else window
+    if n <= start:
+        return out
 
-    for i in range(start, len(frame)):
-        block = values[0:i] if expanding else values[i - window:i]
-        yy = block[:, 0]
-        xx = np.column_stack([np.ones(len(block)), block[:, 1:]])
-        try:
-            beta, *_ = np.linalg.lstsq(xx, yy, rcond=None)
-        except np.linalg.LinAlgError:
-            continue
-        out.iloc[i] = beta
+    yy = values[:, 0]
+    xx = np.column_stack([np.ones(n), values[:, 1:]])
+    k = xx.shape[1]
+
+    # Cumulative X'X and X'y, with a zero row in front so that a window can be
+    # taken as a plain difference of two rows.
+    gram = np.zeros((n + 1, k, k))
+    moment = np.zeros((n + 1, k))
+    gram[1:] = np.cumsum(xx[:, :, None] * xx[:, None, :], axis=0)
+    moment[1:] = np.cumsum(xx * yy[:, None], axis=0)
+
+    ends = np.arange(start, n)
+    starts = np.zeros_like(ends) if expanding else ends - window
+
+    A = gram[ends] - gram[starts]
+    b = moment[ends] - moment[starts]
+
+    # A singular window would raise for the whole batch, so solve in one call
+    # and fall back to a least-squares solve only for the rows that fail.
+    try:
+        # NumPy 2 reads a 2-D right-hand side as a matrix, so the batch has to
+        # be given an explicit trailing axis and squeezed back afterwards.
+        beta = np.linalg.solve(A, b[:, :, None])[:, :, 0]
+    except np.linalg.LinAlgError:
+        beta = np.full((len(ends), k), np.nan)
+        for i in range(len(ends)):
+            try:
+                beta[i] = np.linalg.solve(A[i], b[i])
+            except np.linalg.LinAlgError:
+                beta[i], *_ = np.linalg.lstsq(A[i], b[i], rcond=None)
+
+    out.iloc[start:] = beta
     return out
 
 
